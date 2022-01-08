@@ -146,8 +146,8 @@ type checker struct {
 	// version that hasn't been fixed.
 	hasOldJndiManagerConstructor bool
 	// Does the jar contain a string that was added in 2.16 and whether we've checked for it yet
-	seenJndiManagerClass   bool
-	isAtLeastTwoDotSixteen bool
+	seenJndiManagerClass bool
+	seenisJndiEnabled    bool
 
 	mainClass string
 	version   string
@@ -158,7 +158,7 @@ func (c *checker) done() bool {
 }
 
 func (c *checker) bad() bool {
-	return (c.hasLookupClass && c.hasOldJndiManagerConstructor) || (c.hasLookupClass && c.seenJndiManagerClass && !c.isAtLeastTwoDotSixteen)
+	return (c.hasLookupClass && c.seenJndiManagerClass && !c.seenisJndiEnabled)
 }
 
 func walkZIP(r *zip.Reader, fn func(f *zip.File) error) error {
@@ -300,66 +300,14 @@ func (c *checker) checkJAR(r *zip.Reader, depth int, size int64) error {
 }
 
 const (
-	// Replicate YARA rule:
-	//
-	// strings:
-	// $JndiManagerConstructor = {
-	//     3c 69 6e 69 74 3e ?? ?? ?? 28 4c 6a 61 76 61 2f 6c 61 6e 67 2f 53 74 72 69
-	//     6e 67 3b 4c 6a 61 76 61 78 2f 6e 61 6d 69 6e 67 2f 43 6f 6e 74 65 78 74 3b
-	//     29 56
-	// }
-	//
-	// https://github.com/darkarnium/Log4j-CVE-Detect/blob/main/rules/vulnerability/log4j/CVE-2021-44228.yar
-
-	log4jYARARulePrefix = "\x3c\x69\x6e\x69\x74\x3e"
-	log4jYARARuleSuffix = "\x28\x4c\x6a\x61\x76\x61\x2f\x6c\x61\x6e\x67\x2f\x53\x74\x72\x69\x6e\x67\x3b\x4c\x6a\x61\x76\x61\x78\x2f\x6e\x61\x6d\x69\x6e\x67\x2f\x43\x6f\x6e\x74\x65\x78\x74\x3b\x29\x56"
-
-	// Relevant commit: https://github.com/apache/logging-log4j2/commit/44569090f1cf1e92c711fb96dfd18cd7dccc72ea
-	// In 2.16 the JndiManager class added the method `isJndiEnabled`. This was
-	// done so the Interpolator could check if JNDI was enabled. We expect the
-	// existence of this method should be relatively stable over time.
-	//
-	// This is definitely a bit brittle and may mean we fail to detect future versions
-	// correctly (e.g. if there is a 2.17 that changes the name of the method).
-	// What we really would like is something that was removed (a method, a
-	// constructor, a string, anything...) in 2.16. But there isn't anything
-	// so we have to rely on this brittle solution.
-	//
-	// Since this is so brittle, we're keeping the above rule that can reliably and
-	// non-brittle-ey detect <2.15 as a back up.
-	log4j216Pattern = "isJndiEnabled"
+	isJndiEnabledPattern = "isJndiEnabled"
 )
 
-// log4jPattern is a byte-matching regular expression that checks for two
-// conditions in a Java class file:
-//     1. Does the YARA rule match?
-//     2. Have we found the 2.16 pattern?
 var log4jPattern *binaryregexp.Regexp
 
 func init() {
-	// Since this means we want to check two patterns in parallel we create all
-	// 4 combinations of how the patterns may appear, given that they do not
-	// share a matching prefix or a suffix (which they do not).
-	//
-	// The four combinations are:
-	//     1. [216Pattern]
-	//     2. [YARARulePattern]
-	//     3. [216Pattern.*YARARulePattern]
-	//     4. [YARARulePattern.*216Pattern]
-	//
-	// By creating submatches for each of these cases, we can identify which
-	// patterns are actually present. Also, in order to ensure (1) and (2)
-	// do not shadow (3) and (4), we need to look for the longest match.
-	yaraRule := binaryregexp.QuoteMeta(log4jYARARulePrefix) +
-		".{0,3}" + binaryregexp.QuoteMeta(log4jYARARuleSuffix)
 	log4jPattern = binaryregexp.MustCompile(
-		fmt.Sprintf("(?P<216>%s)|(?P<YARA>%s)|(?P<216First>%s.*%s)|(?P<YARAFirst>%s.*%s)",
-			log4j216Pattern,
-			yaraRule,
-			log4j216Pattern, yaraRule,
-			yaraRule, log4j216Pattern,
-		),
-	)
+		fmt.Sprintf("(?P<216>%s)", isJndiEnabledPattern))
 	log4jPattern.Longest()
 }
 
@@ -378,7 +326,6 @@ func (c *checker) checkClass(filename string, r io.Reader, buf []byte) error {
 
 	br := newByteReader(r, buf)
 	matches := log4jPattern.FindReaderSubmatchIndex(br)
-
 	// Error reading.
 	if err := br.Err(); err != nil && err != io.EOF {
 		return err
@@ -389,30 +336,7 @@ func (c *checker) checkClass(filename string, r io.Reader, buf []byte) error {
 		return nil
 	}
 
-	// We have a match!
-	switch {
-	case matches[2] > 0:
-		// 1. [216Pattern]
-		if checkJndiManagerVersion {
-			c.isAtLeastTwoDotSixteen = true
-		}
-	case matches[4] > 0:
-		// 2. [YARARulePattern]
-		if checkForOldJndiManagerConstructor {
-			c.hasOldJndiManagerConstructor = true
-		}
-	case matches[6] > 0:
-		// 3. [216Pattern.*YARARulePattern]
-		fallthrough
-	case matches[8] > 0:
-		// 4. [YARARulePattern.*216Pattern]
-		if checkJndiManagerVersion {
-			c.isAtLeastTwoDotSixteen = true
-		}
-		if checkForOldJndiManagerConstructor {
-			c.hasOldJndiManagerConstructor = true
-		}
-	}
+	c.seenisJndiEnabled = true
 	return nil
 }
 
