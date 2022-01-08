@@ -43,6 +43,10 @@ var exts = map[string]bool{
 	".ear":  true,
 	".zip":  true,
 	".jmod": true,
+	".par":  true,
+	".kar":  true,
+	".sar":  true,
+}
 }
 
 // Report contains information about a scanned JAR.
