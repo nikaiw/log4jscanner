@@ -23,7 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/google/log4jscanner/jar"
+	"github.com/nikaiw/log4jscanner/jar"
 )
 
 const pathToJARFile = "../jar/testdata/vuln-class.jar"

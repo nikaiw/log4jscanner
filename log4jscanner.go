@@ -23,7 +23,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/google/log4jscanner/jar"
+	"github.com/nikaiw/log4jscanner/jar"
 )
 
 func usage() {

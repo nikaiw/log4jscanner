@@ -28,7 +28,7 @@ import (
 	"strings"
 	"sync"
 
-	zipfork "github.com/google/log4jscanner/third_party/zip"
+	zipfork "github.com/nikaiw/log4jscanner/third_party/zip"
 	"rsc.io/binaryregexp"
 )
 
@@ -46,7 +46,6 @@ var exts = map[string]bool{
 	".par":  true,
 	".kar":  true,
 	".sar":  true,
-}
 }
 
 // Report contains information about a scanned JAR.
