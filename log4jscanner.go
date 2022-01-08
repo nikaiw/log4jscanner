@@ -98,6 +98,10 @@ func main() {
 			log.Printf(format, v...)
 		}
 	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		panic(err)
+	}
 	seen := 0
 	walker := jar.Walker{
 		Rewrite: rewrite,
@@ -128,7 +132,7 @@ func main() {
 		},
 		HandleReport: func(path string, r *jar.Report) {
 			if !rewrite {
-				fmt.Println(path)
+				fmt.Printf("%q,%q,%q\n", hostname, path, r.Version)
 			}
 		},
 		HandleRewrite: func(path string, r *jar.Report) {
