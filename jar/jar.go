@@ -47,7 +47,6 @@ var exts = map[string]bool{
 	".kar":  true,
 	".sar":  true,
 }
-}
 
 // Report contains information about a scanned JAR.
 type Report struct {
