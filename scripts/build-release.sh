@@ -22,7 +22,7 @@ if [[ "$0" != "./scripts/build-release.sh" ]]; then
 fi
 
 VERSION="$1"
-
+echo $GITHUB_REF_TYPE
 if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
 	VERSION="$GITHUB_REF_NAME"
 fi
