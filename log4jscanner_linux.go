@@ -48,8 +48,8 @@ func ignoreDir(path string, force bool) (bool, error) {
 		return false, fmt.Errorf("determining filesystem of %s: %v", path, err)
 	}
 	if force {
-		return toIgnore[stat.Type], nil
+		return toIgnore[int64(stat.Type)], nil
 	}
-	return toIgnore[stat.Type] || networkIgnore[stat.Type], nil
+	return toIgnore[int64(stat.Type)] || networkIgnore[int64(stat.Type)], nil
 
 }
