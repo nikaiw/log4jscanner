@@ -22,7 +22,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-
+	"runtime"
+	"github.com/shirou/gopsutil/disk"
 	"github.com/nikaiw/log4jscanner/jar"
 )
 
@@ -79,9 +80,24 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 	dirs := flag.Args()
+
 	if len(dirs) == 0 {
-		usage()
-		os.Exit(1)
+		switch runtime.GOOS {
+		case "windows":
+			partitions, _ := disk.Partitions(true)
+			for _, partition := range partitions {
+				if partition.Fstype == "NTFS" || partition.Fstype == "FAT32"{
+					dirs = append(dirs, partition.Mountpoint)
+				}
+			}
+		case "darwin":
+			dirs = append(dirs, "/")
+		case "linux":
+			dirs = append(dirs, "/")
+		default:
+			usage()
+			os.Exit(1)
+		}
 	}
 	if f {
 		force = f
