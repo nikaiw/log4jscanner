@@ -1,4 +1,4 @@
-module mylog4jscan
+module github.com/nikaiw/log4jscanner
 
 go 1.17
 
