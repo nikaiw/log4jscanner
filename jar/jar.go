@@ -79,7 +79,6 @@ func Parse(r *zip.Reader) (*Report, error) {
 // ReadCloser mirrors zip.ReadCloser.
 type ReadCloser struct {
 	zip.Reader
-
 	f *os.File
 }
 
@@ -145,15 +144,14 @@ func NewReader(ra io.ReaderAt, size int64) (zr *zip.Reader, offset int64, err er
 type checker struct {
 	// Does the JAR contain the JNDI lookup class?
 	hasLookupClass bool
-	// Does the JAR contain JndiManager with the old constructor, a
-	// version that hasn't been fixed.
-	hasOldJndiManagerConstructor bool
+	// does the jndilookup directly contains the jdni call
+	seenjavaxnaming bool
 	// Does the jar contain a string that was added in 2.16 and whether we've checked for it yet
-	seenJndiManagerClass bool
-	seenisJndiEnabled    bool
+	seenisJndiEnabled      bool
+	seenJndiManagerClass   bool
+	mainClass       string
+	version         string
 
-	mainClass string
-	version   string
 }
 
 func (c *checker) done() bool {
@@ -161,7 +159,7 @@ func (c *checker) done() bool {
 }
 
 func (c *checker) bad() bool {
-	return (c.hasLookupClass && c.seenJndiManagerClass && !c.seenisJndiEnabled)
+	return (c.hasLookupClass && c.seenJndiManagerClass && !c.seenisJndiEnabled) || (c.seenjavaxnaming && c.hasLookupClass)
 }
 
 func walkZIP(r *zip.Reader, fn func(f *zip.File) error) error {
@@ -188,7 +186,6 @@ func (c *checker) checkJAR(r *zip.Reader, depth int, size int64) error {
 	if depth > maxZipDepth {
 		return fmt.Errorf("reached max zip depth of %d", maxZipDepth)
 	}
-
 	err := walkZIP(r, func(zf *zip.File) error {
 		d := fs.FileInfoToDirEntry(zf.FileInfo())
 		p := zf.Name
@@ -304,42 +301,48 @@ func (c *checker) checkJAR(r *zip.Reader, depth int, size int64) error {
 
 const (
 	isJndiEnabledPattern = "isJndiEnabled"
+	javaxnamingPattern = "javax.naming.InitialContext"
 )
 
-var log4jPattern *binaryregexp.Regexp
-
+var isJndiEnabledreg *binaryregexp.Regexp
+var javaxNamingreg *binaryregexp.Regexp
 func init() {
-	log4jPattern = binaryregexp.MustCompile(
-		fmt.Sprintf("(?P<216>%s)", isJndiEnabledPattern))
-	log4jPattern.Longest()
+	isJndiEnabledreg = binaryregexp.MustCompile(
+		fmt.Sprintf("(?P<isJndiEnabled>%s)", isJndiEnabledPattern))
+	javaxNamingreg = binaryregexp.MustCompile(
+		fmt.Sprintf("(?P<javaxnaming>%s)", javaxnamingPattern))
 }
 
 func (c *checker) checkClass(filename string, r io.Reader, buf []byte) error {
 	if !c.hasLookupClass && strings.Contains(filename, "JndiLookup.class") {
 		c.hasLookupClass = true
+		br := newByteReader(r, buf)
+		matches := javaxNamingreg.FindReaderSubmatchIndex(br)
+		// Error reading.
+		if err := br.Err(); err != nil && err != io.EOF {
+			return err
+		}
+		if matches == nil {
+			return nil
+		}
+		c.seenjavaxnaming = true
 	}
-	checkForOldJndiManagerConstructor := !c.hasOldJndiManagerConstructor && strings.Contains(filename, "JndiManager")
-	checkJndiManagerVersion := strings.Contains(filename, "JndiManager.class")
-	if !checkForOldJndiManagerConstructor && !checkJndiManagerVersion {
-		return nil
-	}
-	if checkJndiManagerVersion {
+
+	if !c.seenJndiManagerClass &&  strings.Contains(filename, "JndiManager.class"){
 		c.seenJndiManagerClass = true
-	}
+		br := newByteReader(r, buf)
+		matches := isJndiEnabledreg.FindReaderSubmatchIndex(br)
+		// Error reading.
+		if err := br.Err(); err != nil && err != io.EOF {
+			return err
+		}
 
-	br := newByteReader(r, buf)
-	matches := log4jPattern.FindReaderSubmatchIndex(br)
-	// Error reading.
-	if err := br.Err(); err != nil && err != io.EOF {
-		return err
+		// No match.
+		if matches == nil {
+			return nil
+		}
+		c.seenisJndiEnabled = true
 	}
-
-	// No match.
-	if matches == nil {
-		return nil
-	}
-
-	c.seenisJndiEnabled = true
 	return nil
 }
 
