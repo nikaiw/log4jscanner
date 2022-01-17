@@ -7,6 +7,7 @@ A minor fork of https://github.com/google/log4jscanner
 ## Changes
 
 - The scanner won't detect patched version 2.12.2+ and 2.3.1+
+- The scanner will detect the vulnerable version between 2.0-beta9 and 2.0 
 - The scanner scan all local disks if no argument is given
 - The scanner checks .par, .sar , .kar
 - The scanner will output to stdout the result as CSV with the following format:
